@@ -7,7 +7,7 @@ import pickle
 class RedisDict(object):
     # believe it or not, object works better than dict
 
-    def __init__(self, prefix='RedisGlobals-', host='localhost', port=6379):
+    def __init__(self, prefix='RedisDict-', host='localhost', port=6379):
         self.prefix = prefix
         self.host = host
         self.port = port
