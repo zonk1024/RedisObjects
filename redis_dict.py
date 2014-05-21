@@ -4,7 +4,7 @@ import redis
 import pickle
 
 
-class GlobalDict(object):
+class RedisDict(object):
     # believe it or not, object works better than dict
 
     def __init__(self, prefix='RedisGlobals-', host='localhost', port=6379):
@@ -64,7 +64,7 @@ class GlobalDict(object):
         return self.__getitem__(key) or default
 
     def update(self, iterable, **kwargs):
-        if type(iterable) in (dict, GlobalDict):
+        if type(iterable) in (dict, RedisDict):
             self.update(iterable.items(), **kwargs)
         iterable.extend(kwargs.items())
         for key, value in iterable:
@@ -129,9 +129,9 @@ class GlobalDict(object):
 
 
 if __name__ == '__main__':
-    gd = GlobalDict()
-    gd2 = GlobalDict()
-    rd = GlobalDict()
+    gd = RedisDict()
+    gd2 = RedisDict()
+    rd = RedisDict()
     print 'init'
     print 'gd', gd
     print 'gd2', gd2
