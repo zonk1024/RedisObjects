@@ -1,5 +1,5 @@
-redis_dict
-==========
+RedisObjects
+============
 
 Simple to use:
 
