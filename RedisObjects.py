@@ -1,33 +1,42 @@
 #!/usr/bin/env python
 
+from itertools import izip
 import redis
 import pickle
 
 
-class RedisDict(object):
-    # believe it or not, object works better than dict
+class RedisConnectionManager(object):
+    cons = {}
 
-    def __init__(self, prefix='RedisDict-', host='localhost', port=6379):
-        self.prefix = prefix
+    @classmethod
+    def r(cls, obj):
+        success = False
+        while not success:
+            try:
+                success = cls.cons[(obj.host, obj.port)].ping()
+            except (redis.ConnectionError, KeyError):
+                cls.cons[(obj.host, obj.port)] = redis.Redis(obj.host, obj.port)
+        return cls.cons[(obj.host, obj.port)]
+
+
+class RedisObject(object):
+    def __init__(self, name='RedisObject-', host='localhost', port=6379):
+        self.name = name
         self.host = host
         self.port = port
 
     @property
     def r(self):
-        success = False
-        while not success:
-            try:
-                success = self._r.ping()
-            except (redis.ConnectionError, AttributeError):
-                self._r = redis.Redis(self.host, self.port)
-        return self._r
+        return RedisConnectionManager.r(self)
 
+
+class RedisDict(RedisObject):
     def pickle_key(self, key='*'):
         hash(key)  # throw an error if you must
-        return '{}{}'.format(self.prefix, pickle.dumps(key))
+        return '{}{}'.format(self.name, pickle.dumps(key))
 
     def unpickle_key(self, key):
-        return pickle.loads(key[len(self.prefix):])
+        return pickle.loads(key[len(self.name):])
 
     def pickle_value(self, value):
         return pickle.dumps(value)
@@ -74,7 +83,7 @@ class RedisDict(object):
         return self.__iter__()
 
     def keys(self):
-        return [self.unpickle_key(key) for key in self.r.keys('{}*'.format(self.prefix))]
+        return [self.unpickle_key(key) for key in self.r.keys('{}*'.format(self.name))]
 
     def sorted_keys(self):
         return sorted(self._keys())
@@ -139,6 +148,109 @@ class RedisDict(object):
 
     def __ne__(self, other):
         return not self.__eq__(other)
+
+    def __len__(self):
+        return self.len()
+
+
+class RedisList(RedisObject):
+    def append(self, value):
+        self.r.rpush(self.name, value)
+
+    def extend(self, values):
+        self.r.rpush(self.name, *values)
+
+    def insert(self, index, value):
+        self.r.linsert(self.name, index, value)
+
+    def remove(self, value):
+        self.r.lrem(self.name, value)
+
+    def pop(self, index=-1):
+        length = len(self)
+        if index < 0:
+            if index + length < 0:
+                raise IndexError('RedisList index out of range')
+            return self.r.lrem(self.name, length + index)
+        if index > length - 1:
+            raise IndexError('RedisList index out of range')
+        return self.r.lrem(self.name, length)
+
+    def index(self, value):
+        index = self.r.index(self.name, value)
+        if index is None:
+            raise ValueError('{} is not in RedisList'.format(repr(value)))
+        return index
+
+    def count(self, value):
+        count = 0
+        for v in self.__list__():
+            if v == value:
+                count += 1
+        return count
+
+    def sort(self, *args, **kwargs):
+        temp = sorted(self.__list__(), *args, **kwargs)
+        self.r.delete(self.name)
+        self.r.rpush(self.name, *temp)
+        return temp
+
+    def reverse(self):
+        temp = self.__list__()[::-1]
+        self.r.delete(self.name)
+        self.r.rpush(self.name, *temp)
+
+    def __list__(self):
+        return self.r.lrange(self.name, 0, -1)
+
+    def __str__(self):
+        return str(self.__list__())
+
+    def __repr__(self):
+        return repr(self.__list__())
+
+    def __eq__(self, other):
+        if type(other) in (list, RedisList):
+            return all(a == b for a, b in izip(self.__list__(), other))
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __add__(self, value):
+        if type(value) is list:
+            return self.__list__() + value
+        if type(value) is RedisList:
+            return self.__list__() + value.__list__()
+        raise TypeError('can only concatenate list or RedisList (not "{}") to RedisList'.format(type(value)))
+
+    def __contains__(self, value):
+        try:
+            self.index(value):
+            return True
+        except ValueError:
+            return False
+
+    def __delitem__(self, index):
+        self.pop(index)
+
+    def __delslice__(self, i, j, n=1):
+        temp = self.__list__()
+        del(temp[i:j:n])
+        self.r.delete(self.name)
+        self.r.rpush(self.name, *temp)
+
+    def __iter__(self):
+        length = len(self)
+        i = 0
+        while i < length - 1:
+            if length != len(self):
+                raise RuntimeError("RedisList changed size during iteration")
+            yield self.r.index(self.name, i)
+            i += 1
+
+    def __len__(self):
+        return self.r.llen(self.name)
 
 
 if __name__ == '__main__':
