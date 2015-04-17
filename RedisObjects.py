@@ -135,7 +135,7 @@ class RedisDict(RedisObject):
         self.r.hdel(self.name, self.pickle(key))
 
     def __contains__(self, key):
-        return key in self.keys()
+        return self.hexists(self.name, self.pickle(key))
 
     def __iter__(self):
         keys = self.keys()
