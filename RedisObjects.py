@@ -56,6 +56,12 @@ class RedisObject(object):
         for instance in cls.instances:
             instance.delete_lock()
 
+    def pickle_value(self, value):
+        return pickle.dumps(value)
+
+    def unpickle_value(self, value):
+        return None if value is None else pickle.loads(value)
+
 
 class RedisDict(RedisObject):
     def pickle_key(self, key='*'):
@@ -66,12 +72,6 @@ class RedisDict(RedisObject):
         if not key[len(self.name):] or key == self.lock_name:
             return None
         return pickle.loads(key[len(self.name):])
-
-    def pickle_value(self, value):
-        return pickle.dumps(value)
-
-    def unpickle_value(self, value):
-        return None if value is None else pickle.loads(value)
 
     def len(self):
         return len(self._keys())
@@ -189,13 +189,13 @@ class RedisDict(RedisObject):
 
 class RedisList(RedisObject):
     def append(self, value):
-        self.r.rpush(self.name, value)
+        self.r.rpush(self.name, self.pickle_value(value))
 
     def extend(self, values):
-        self.r.rpush(self.name, *values)
+        self.r.rpush(self.name, *[self.pickle_value(value) for value in values])
 
     def insert(self, index, value):
-        self.r.linsert(self.name, index, value)
+        self.r.linsert(self.name, index, self.pickle_value(value))
 
     def remove(self, value):
         self.r.lrem(self.name, value)
@@ -205,13 +205,13 @@ class RedisList(RedisObject):
         if index < 0:
             if index + length < 0:
                 raise IndexError('RedisList index out of range')
-            return self.r.lrem(self.name, length + index)
+            return self.unpickle_value(self.r.lrem(self.name, length + index))
         if index > length - 1:
             raise IndexError('RedisList index out of range')
-        return self.r.lrem(self.name, length)
+        return self.unpickle_value(self.r.lrem(self.name, index))
 
     def index(self, value):
-        index = self.r.index(self.name, value)
+        index = self.r.index(self.name, self.pickle_value(value))
         if index is None:
             raise ValueError('{} is not in RedisList'.format(repr(value)))
         return index
@@ -232,7 +232,7 @@ class RedisList(RedisObject):
     def reverse(self):
         temp = self.__list__()[::-1]
         self.r.delete(self.name)
-        self.r.rpush(self.name, *temp)
+        self.r.rpush(self.name, *[self.pickle_value(t) for t in temp])
 
     def clear(self):
         self.r.delete(self.name)
@@ -251,10 +251,10 @@ class RedisList(RedisObject):
         temp = self.__list__()
         del(temp[i:j:n])
         self.r.delete(self.name)
-        self.r.rpush(self.name, *temp)
+        self.r.rpush(self.name, *[self.pickle_value(t) for t in temp])
 
     def __list__(self):
-        return self.r.lrange(self.name, 0, -1)
+        return [self.unpickle_value(value) for value in self.r.lrange(self.name, 0, -1)]
 
     def __str__(self):
         return str(self.__list__())
@@ -290,13 +290,13 @@ class RedisList(RedisObject):
         return self.r.llen(self.name)
 
 
-
 atexit.register(RedisObject.cleanup)
 
 if __name__ == '__main__':
+    ##################
     # dictionary check
     d = {}
-    rd = RedisDict()
+    rd = RedisDict('RedisDict_test')
     rd.clear()
 
     d['foo'] = 5
@@ -332,9 +332,13 @@ if __name__ == '__main__':
     rd.clear()
 
 
+    ############
     # list check
     l = []
-    rl = RedisList()
+    rl = RedisList('RedisList_test')
+
+    l.append(5)
+    rl.append(5)
 
     l.append('bob')
     with rl.acquire_lock():
