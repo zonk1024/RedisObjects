@@ -64,18 +64,8 @@ class RedisObject(object):
 
 
 class RedisDict(RedisObject):
-    # TODO: convert to hash
-    def pickle_key(self, key='*'):
-        hash(key)  # throw an error if you must
-        return '{}{}'.format(self.name, pickle.dumps(key))
-
-    def unpickle_key(self, key):
-        if not key[len(self.name):] or key == self.lock_name:
-            return None
-        return pickle.loads(key[len(self.name):])
-
     def len(self):
-        return len(self._keys())
+        return len(self.keys())
 
     def clear(self):
         for key in self.keys():
@@ -113,15 +103,10 @@ class RedisDict(RedisObject):
         return self.__iter__()
 
     def keys(self):
-        output = []
-        for key in self.r.keys('{}*'.format(self.name)):
-            key = self.unpickle_key(key)
-            if key:
-                output.append(key)
-        return output
+        return [self.unpickle_value(key) for key in self.r.hkeys(self.name)]
 
     def sorted_keys(self):
-        return sorted(self._keys())
+        return sorted(self.keys())
 
     def itervalues(self):
         return (self.__getitem__(key) for key in self.__iter__())
@@ -136,16 +121,16 @@ class RedisDict(RedisObject):
         return list(self.iteritems())
 
     def __getitem__(self, key):
-        return self.unpickle_value(self.r.get(self.pickle_key(key)))
+        return self.unpickle_value(self.r.hget(self.name, self.pickle_value(key)))
 
     def __setitem__(self, key, value):
         if value is None:
             self.__delitem__(key)
             return
-        self.r.set(self.pickle_key(key), self.pickle_value(value))
+        self.r.hset(self.name, self.pickle_value(key), self.pickle_value(value))
 
     def __delitem__(self, key):
-        self.r.delete(self.pickle_key(key))
+        self.r.hdel(self.name, self.pickle_value(key))
 
     def __contains__(self, key):
         return key in self.keys()
