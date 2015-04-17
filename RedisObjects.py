@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
 from itertools import izip
+from contextlib import contextmanager
 import redis
 import pickle
+import atexit
 
 
 class RedisConnectionManager(object):
@@ -20,14 +22,39 @@ class RedisConnectionManager(object):
 
 
 class RedisObject(object):
+    instances = []
+
     def __init__(self, name='RedisObject-', host='localhost', port=6379):
         self.name = name
         self.host = host
         self.port = port
+        self.instances.append(self)
 
     @property
     def r(self):
         return RedisConnectionManager.r(self)
+
+    @property
+    def lock_name(self):
+        return '{}LOCK'.format(self.name)
+
+    def __del__(self):
+        self.r.delete(self.name)
+
+    def delete_lock(self):
+        self.r.delete(self.lock_name)
+
+    @contextmanager
+    def acquire_lock(self):
+        while self.r.incr(self.lock_name) != 1:
+            self.r.decr(self.lock_name)
+        yield
+        self.r.decr(self.lock_name)
+
+    @classmethod
+    def cleanup(cls):
+        for instance in cls.instances:
+            instance.delete_lock()
 
 
 class RedisDict(RedisObject):
@@ -36,6 +63,8 @@ class RedisDict(RedisObject):
         return '{}{}'.format(self.name, pickle.dumps(key))
 
     def unpickle_key(self, key):
+        if not key[len(self.name):] or key == self.lock_name:
+            return None
         return pickle.loads(key[len(self.name):])
 
     def pickle_value(self, value):
@@ -83,7 +112,12 @@ class RedisDict(RedisObject):
         return self.__iter__()
 
     def keys(self):
-        return [self.unpickle_key(key) for key in self.r.keys('{}*'.format(self.name))]
+        output = []
+        for key in self.r.keys('{}*'.format(self.name)):
+            key = self.unpickle_key(key)
+            if key:
+                output.append(key)
+        return output
 
     def sorted_keys(self):
         return sorted(self._keys())
@@ -200,6 +234,25 @@ class RedisList(RedisObject):
         self.r.delete(self.name)
         self.r.rpush(self.name, *temp)
 
+    def clear(self):
+        self.r.delete(self.name)
+
+    def __add__(self, value):
+        if type(value) is list:
+            return self.__list__() + value
+        if type(value) is RedisList:
+            return self.__list__() + value.__list__()
+        raise TypeError('can only concatenate list or RedisList (not "{}") to RedisList'.format(type(value)))
+
+    def __delitem__(self, index):
+        self.pop(index)
+
+    def __delslice__(self, i, j, n=1):
+        temp = self.__list__()
+        del(temp[i:j:n])
+        self.r.delete(self.name)
+        self.r.rpush(self.name, *temp)
+
     def __list__(self):
         return self.r.lrange(self.name, 0, -1)
 
@@ -217,28 +270,12 @@ class RedisList(RedisObject):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    def __add__(self, value):
-        if type(value) is list:
-            return self.__list__() + value
-        if type(value) is RedisList:
-            return self.__list__() + value.__list__()
-        raise TypeError('can only concatenate list or RedisList (not "{}") to RedisList'.format(type(value)))
-
     def __contains__(self, value):
         try:
-            self.index(value):
+            self.index(value)
             return True
         except ValueError:
             return False
-
-    def __delitem__(self, index):
-        self.pop(index)
-
-    def __delslice__(self, i, j, n=1):
-        temp = self.__list__()
-        del(temp[i:j:n])
-        self.r.delete(self.name)
-        self.r.rpush(self.name, *temp)
 
     def __iter__(self):
         length = len(self)
@@ -253,6 +290,9 @@ class RedisList(RedisObject):
         return self.r.llen(self.name)
 
 
+
+atexit.register(RedisObject.cleanup)
+
 if __name__ == '__main__':
     # dictionary check
     d = {}
@@ -260,16 +300,20 @@ if __name__ == '__main__':
     rd.clear()
 
     d['foo'] = 5
-    rd['foo'] = 5
+    with rd.acquire_lock():
+        rd['foo'] = 5
 
     d['bar'] = [1, 2, 3]
-    rd['bar'] = [1, 2, 3]
+    with rd.acquire_lock():
+        rd['bar'] = [1, 2, 3]
 
     d['baz'] = {}
-    rd['baz'] = {}
+    with rd.acquire_lock():
+        rd['baz'] = {}
 
     d[(0, 1)] = {'1': 1, '2': 2}
-    rd[(0, 1)] = {'1': 1, '2': 2}
+    with rd.acquire_lock():
+        rd[(0, 1)] = {'1': 1, '2': 2}
 
     assert set(d.keys()) == set(rd.keys())
 
@@ -279,8 +323,23 @@ if __name__ == '__main__':
     assert d == rd
 
     rd.clear()
-    rd.update(d.items())
+
+    with rd.acquire_lock():
+        rd.update(d.items())
 
     assert d == rd
 
     rd.clear()
+
+
+    # list check
+    l = []
+    rl = RedisList()
+
+    l.append('bob')
+    with rl.acquire_lock():
+        rl.append('bob')
+
+    assert l == rl
+
+    rl.clear()
