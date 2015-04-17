@@ -42,6 +42,8 @@ class RedisObject(object):
         self.r.delete(self.name)
 
     def delete_lock(self):
+        while self.r.incr(self.lock_name) != 1:
+            self.r.decr(self.lock_name)
         self.r.delete(self.lock_name)
 
     @contextmanager
