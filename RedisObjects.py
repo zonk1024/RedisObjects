@@ -62,7 +62,7 @@ class RedisObject(object):
         return pickle.dumps(value)
 
     def unpickle(self, value):
-        return None if value is None else pickle.loads(value)
+        return pickle.loads(value)
 
 
 class RedisDict(RedisObject):
@@ -126,9 +126,6 @@ class RedisDict(RedisObject):
         return self.unpickle(self.r.hget(self.name, self.pickle(key)))
 
     def __setitem__(self, key, value):
-        if value is None:
-            self.__delitem__(key)
-            return
         self.r.hset(self.name, self.pickle(key), self.pickle(value))
 
     def __delitem__(self, key):
@@ -138,9 +135,9 @@ class RedisDict(RedisObject):
         return self.hexists(self.name, self.pickle(key))
 
     def __iter__(self):
-        keys = self.keys()
+        keys = set(self.keys())
         for key in keys:
-            if keys != self.keys():
+            if keys != set(self.keys()):
                 raise RuntimeError("RedisDict changed size during iteration")
             yield key
 
@@ -310,6 +307,12 @@ if __name__ == '__main__':
     d[(0, 1)] = {'1': 1, '2': 2}
     with rd.acquire_lock():
         rd[(0, 1)] = {'1': 1, '2': 2}
+
+    from sets import ImmutableSet
+    i_s = ImmutableSet([1, 2])
+    d[i_s] = None
+    with rd.acquire_lock():
+        rd[i_s] = None
 
     assert set(d.keys()) == set(rd.keys())
 
