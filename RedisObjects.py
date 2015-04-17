@@ -64,6 +64,7 @@ class RedisObject(object):
 
 
 class RedisDict(RedisObject):
+    # TODO: convert to hash
     def pickle_key(self, key='*'):
         hash(key)  # throw an error if you must
         return '{}{}'.format(self.name, pickle.dumps(key))
@@ -288,6 +289,14 @@ class RedisList(RedisObject):
 
     def __len__(self):
         return self.r.llen(self.name)
+
+
+class RedisSet(RedisObject):
+    pass
+
+
+class RedisSortedSet(RedisObject):
+    pass
 
 
 atexit.register(RedisObject.cleanup)
