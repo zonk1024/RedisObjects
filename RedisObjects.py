@@ -56,10 +56,10 @@ class RedisObject(object):
         for instance in cls.instances:
             instance.delete_lock()
 
-    def pickle_value(self, value):
+    def pickle(self, value):
         return pickle.dumps(value)
 
-    def unpickle_value(self, value):
+    def unpickle(self, value):
         return None if value is None else pickle.loads(value)
 
 
@@ -103,34 +103,34 @@ class RedisDict(RedisObject):
         return self.__iter__()
 
     def keys(self):
-        return [self.unpickle_value(key) for key in self.r.hkeys(self.name)]
+        return [self.unpickle(key) for key in self.r.hkeys(self.name)]
 
     def sorted_keys(self):
         return sorted(self.keys())
 
     def itervalues(self):
-        return (self.__getitem__(key) for key in self.__iter__())
+        return (value for key, value in self.iteritems())
 
     def values(self):
         return list(self.itervalues())
 
     def iteritems(self):
-        return ((key, self.__getitem__(key)) for key in self.__iter__())
+        return ((self.unpickle(key), self.unpickle(value)) for key, value in self.r.hgetall(self.name))
 
     def items(self):
         return list(self.iteritems())
 
     def __getitem__(self, key):
-        return self.unpickle_value(self.r.hget(self.name, self.pickle_value(key)))
+        return self.unpickle(self.r.hget(self.name, self.pickle(key)))
 
     def __setitem__(self, key, value):
         if value is None:
             self.__delitem__(key)
             return
-        self.r.hset(self.name, self.pickle_value(key), self.pickle_value(value))
+        self.r.hset(self.name, self.pickle(key), self.pickle(value))
 
     def __delitem__(self, key):
-        self.r.hdel(self.name, self.pickle_value(key))
+        self.r.hdel(self.name, self.pickle(key))
 
     def __contains__(self, key):
         return key in self.keys()
@@ -175,13 +175,13 @@ class RedisDict(RedisObject):
 
 class RedisList(RedisObject):
     def append(self, value):
-        self.r.rpush(self.name, self.pickle_value(value))
+        self.r.rpush(self.name, self.pickle(value))
 
     def extend(self, values):
-        self.r.rpush(self.name, *[self.pickle_value(value) for value in values])
+        self.r.rpush(self.name, *[self.pickle(value) for value in values])
 
     def insert(self, index, value):
-        self.r.linsert(self.name, index, self.pickle_value(value))
+        self.r.linsert(self.name, index, self.pickle(value))
 
     def remove(self, value):
         self.r.lrem(self.name, value)
@@ -191,13 +191,13 @@ class RedisList(RedisObject):
         if index < 0:
             if index + length < 0:
                 raise IndexError('RedisList index out of range')
-            return self.unpickle_value(self.r.lrem(self.name, length + index))
+            return self.unpickle(self.r.lrem(self.name, length + index))
         if index > length - 1:
             raise IndexError('RedisList index out of range')
-        return self.unpickle_value(self.r.lrem(self.name, index))
+        return self.unpickle(self.r.lrem(self.name, index))
 
     def index(self, value):
-        index = self.r.index(self.name, self.pickle_value(value))
+        index = self.r.index(self.name, self.pickle(value))
         if index is None:
             raise ValueError('{} is not in RedisList'.format(repr(value)))
         return index
@@ -218,7 +218,7 @@ class RedisList(RedisObject):
     def reverse(self):
         temp = self.__list__()[::-1]
         self.r.delete(self.name)
-        self.r.rpush(self.name, *[self.pickle_value(t) for t in temp])
+        self.r.rpush(self.name, *[self.pickle(t) for t in temp])
 
     def clear(self):
         self.r.delete(self.name)
@@ -237,10 +237,10 @@ class RedisList(RedisObject):
         temp = self.__list__()
         del(temp[i:j:n])
         self.r.delete(self.name)
-        self.r.rpush(self.name, *[self.pickle_value(t) for t in temp])
+        self.r.rpush(self.name, *[self.pickle(t) for t in temp])
 
     def __list__(self):
-        return [self.unpickle_value(value) for value in self.r.lrange(self.name, 0, -1)]
+        return [self.unpickle(value) for value in self.r.lrange(self.name, 0, -1)]
 
     def __str__(self):
         return str(self.__list__())
