@@ -256,17 +256,10 @@ class RedisList(RedisObject):
         return not self.__eq__(other)
 
     def __contains__(self, value):
-        index = self.r.lindex(self.name, self.pickle(value))
-        if index is None:
-            return False
-        return True
+        return False if self.r.lindex(self.name, self.pickle(value)) is None else True
 
     def __iter__(self):
-        length = len(self)
-        i = 0
-        while i < length:
-            yield self.unpickle(self.r.lindex(self.name, i))
-            i += 1
+        return (self.unpickle(self.r.lindex(self.name, i)) for i in xrange(self.__len__()))
 
     def __len__(self):
         return self.r.llen(self.name)
