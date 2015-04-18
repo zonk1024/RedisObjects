@@ -20,11 +20,13 @@ class RedisConnectionManager(object):
                 cls.cons[(obj.host, obj.port)] = redis.Redis(obj.host, obj.port)
         return cls.cons[(obj.host, obj.port)]
 
+class RedisLockInUse(Exception):
+    pass
 
 class RedisObject(object):
     instances = []
 
-    def __init__(self, name='RedisObject-', host='localhost', port=6379):
+    def __init__(self, name, host='localhost', port=6379):
         self.name = name
         self.host = host
         self.port = port
@@ -47,8 +49,10 @@ class RedisObject(object):
         self.r.delete(self.lock_name)
 
     @contextmanager
-    def acquire_lock(self):
+    def acquire_lock(self, raise_exception=False):
         while self.r.incr(self.lock_name) != 1:
+            if raise_exception:
+                raise RedisLockInUse()
             self.r.decr(self.lock_name)
         yield
         self.r.decr(self.lock_name)
@@ -64,14 +68,9 @@ class RedisObject(object):
     def unpickle(self, value):
         return pickle.loads(value)
 
-
 class RedisDict(RedisObject):
-    def len(self):
-        return len(self.keys())
-
     def clear(self):
-        for key in self.keys():
-            self.__delitem__(key)
+        self.r.delete(self.name)
 
     def pop(self, key, default=None):
         value = self.__getitem__(key)
@@ -94,30 +93,33 @@ class RedisDict(RedisObject):
     def get(self, key, default=None):
         return self.__getitem__(key) or default
 
-    def update(self, iterable, **kwargs):
-        if type(iterable) in (dict, RedisDict):
-            self.update(iterable.items(), **kwargs)
-        iterable.extend(kwargs.items())
-        for key, value in iterable:
+    def update(self, obj, **kwargs):
+        for key, value in kwargs.iteritems():
             self.__setitem__(key, value)
+        if type(obj) in (dict, RedisDict):
+            for key, value in obj.iteritems():
+                self.__setitem__(key, value)
+        if type(obj) is list:
+            for key, value in obj:
+                self.__setitem__(key, value)
 
     def iterkeys(self):
         return self.__iter__()
 
     def keys(self):
-        return [self.unpickle(key) for key in self.r.hkeys(self.name)]
+        return list(self.__iter__())
 
     def sorted_keys(self):
-        return sorted(self.keys())
+        return sorted(self.__iter__())
 
     def itervalues(self):
-        return (value for key, value in self.iteritems())
+        return (self.unpickle(value) for value in self.r.hvals(self.name))
 
     def values(self):
         return list(self.itervalues())
 
     def iteritems(self):
-        return ((self.unpickle(key), self.unpickle(value)) for key, value in self.r.hgetall(self.name))
+        return ((self.unpickle(key), self.unpickle(value)) for key, value in self.r.hgetall(self.name).iteritems())
 
     def items(self):
         return list(self.iteritems())
@@ -135,18 +137,10 @@ class RedisDict(RedisObject):
         return self.hexists(self.name, self.pickle(key))
 
     def __iter__(self):
-        keys = set(self.keys())
-        for key in keys:
-            if keys != set(self.keys()):
-                raise RuntimeError("RedisDict changed size during iteration")
-            yield key
+        return (self.unpickle(key) for key in self.r.hkeys(self.name))
 
     def __reversed__(self):
-        keys = self.keys()
-        for key in keys[::-1]:
-            if keys != self.keys():
-                raise RuntimeError("RedisDict changed size during iteration")
-            yield key
+        return (key for key in self.keys()[::-1])
 
     def __str__(self):
         return str(self.__dict__())
@@ -160,8 +154,12 @@ class RedisDict(RedisObject):
     def __eq__(self, other):
         if type(other) not in (dict, RedisDict):
             return False
-        for k in self:
-            if other[k] != self[k]:
+        self_keys = self.keys()
+        other_keys = other.keys()
+        if set(self_keys) != set(other_keys):
+            return False
+        for k in self_keys:
+            if self[k] != other[k]:
                 return False
         return True
 
@@ -169,8 +167,7 @@ class RedisDict(RedisObject):
         return not self.__eq__(other)
 
     def __len__(self):
-        return self.len()
-
+        return self.r.hlen(self.name)
 
 class RedisList(RedisObject):
     def append(self, value):
@@ -256,17 +253,16 @@ class RedisList(RedisObject):
         return not self.__eq__(other)
 
     def __contains__(self, value):
-        try:
-            self.index(value)
-            return True
-        except ValueError:
+        index = self.r.index(self.name, self.pickle(value))
+        if index is None:
             return False
+        return True
 
     def __iter__(self):
         length = len(self)
         i = 0
         while i < length - 1:
-            if length != len(self):
+            if self.SAFE_ITER and length != len(self):
                 raise RuntimeError("RedisList changed size during iteration")
             yield self.r.index(self.name, i)
             i += 1
@@ -274,75 +270,10 @@ class RedisList(RedisObject):
     def __len__(self):
         return self.r.llen(self.name)
 
-
 class RedisSet(RedisObject):
     pass
-
 
 class RedisSortedSet(RedisObject):
     pass
 
-
 atexit.register(RedisObject.cleanup)
-
-if __name__ == '__main__':
-    ##################
-    # dictionary check
-    d = {}
-    rd = RedisDict('RedisDict_test')
-    rd.clear()
-
-    d['foo'] = 5
-    with rd.acquire_lock():
-        rd['foo'] = 5
-
-    d['bar'] = [1, 2, 3]
-    with rd.acquire_lock():
-        rd['bar'] = [1, 2, 3]
-
-    d['baz'] = {}
-    with rd.acquire_lock():
-        rd['baz'] = {}
-
-    d[(0, 1)] = {'1': 1, '2': 2}
-    with rd.acquire_lock():
-        rd[(0, 1)] = {'1': 1, '2': 2}
-
-    from sets import ImmutableSet
-    i_s = ImmutableSet([1, 2])
-    d[i_s] = None
-    with rd.acquire_lock():
-        rd[i_s] = None
-
-    assert set(d.keys()) == set(rd.keys())
-
-    for k in rd:
-        assert d[k] == rd[k]
-
-    assert d == rd
-
-    rd.clear()
-
-    with rd.acquire_lock():
-        rd.update(d.items())
-
-    assert d == rd
-
-    rd.clear()
-
-
-    ############
-    # list check
-    l = []
-    rl = RedisList('RedisList_test')
-
-    l.append(5)
-    rl.append(5)
-
-    l.append('bob')
-    with rl.acquire_lock():
-        rl.append('bob')
-
-    assert l == rl
-
-    rl.clear()

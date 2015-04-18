@@ -1,85 +1,75 @@
 #!/usr/bin/env python
-"""
-This is BS.  It's not full on tests yet.
-"""
+
+from __future__ import print_function
+from RedisObjects import RedisDict, RedisList, RedisLockInUse
+from collections import defaultdict
+from contextlib import contextmanager
+from sets import ImmutableSet
+tests = defaultdict(list)
+
+##################
+# RedisDict check
+
+@contextmanager
+def populated_dicts():
+    py_dict = {
+        1: [1],
+        '1': ['1'],
+        (1, ): [(1, )],
+        ('1', ): [('1', )],
+        2: {},
+        '2': {2: {}},
+        ImmutableSet((3, )): set((3, )),
+    }
+    redis_dict = RedisDict('redis_dict_test_object')
+    redis_dict.clear()
+    redis_dict.delete_lock()
+    with redis_dict.acquire_lock(raise_exception=True):
+        redis_dict.update(py_dict.items())
+    yield (py_dict, redis_dict)
+    redis_dict.clear()
+    redis_dict.cleanup()
+
+class RedisDictTests:
+    @classmethod
+    def basic_test(cls):
+        with populated_dicts() as (py_dict, redis_dict):
+            print(py_dict)
+            print(redis_dict)
+            for key in redis_dict:
+                assert redis_dict[key] == py_dict[key]
+
+    @classmethod
+    def check_lock(cls):
+        with populated_dicts() as (py_dict, redis_dict):
+            with redis_dict.acquire_lock(True):
+                try:
+                    with redis_dict.acquire_lock(True):
+                        print('This shouldn\'t happen')
+                except RedisLockInUse as exception:
+                    redis_dict.delete_lock()
+                    redis_dict.clear()
+                    print(exception)
+
+
+def list_check():
+    ############
+    # list check
+    l = []
+    rl = RedisList('RedisList_test')
+
+    l.append(5)
+    rl.append(5)
+
+    l.append('bob')
+    with rl.acquire_lock(True):
+        rl.append('bob')
+
+    assert l == rl
+
+    rl.clear()
 
 if __name__ == '__main__':
-    gd = RedisDict()
-    gd2 = RedisDict()
-    rd = RedisDict()
-    print 'init'
-    print 'gd', gd
-    print 'gd2', gd2
-    print 'rd', rd
-    print
-
-    del(gd['bob'])
-    del(rd['bob'])
-    print 'del(dict[\'bob\'])'
-    print 'gd', gd
-    print 'gd2', gd2
-    print 'rd', rd
-    print
-
-    print 'It works, but they don\'t seem to show up without a direct call'
-    # hence the line 26 comment
-    gd[{'x':'Y'}] = {'z': '0'}
-    rd[{'x':'Y'}] = {'z': '0'}
-    print 'VOODOO!'
-    print "gd[{'x':'Y'}] = {'z': '0'}"
-    print "rd[{'x':'Y'}] = {'z': '0'}"
-    print 'I SEE YOU!'
-    print "gd[{'x':'Y'}]", gd[{'x':'Y'}]
-    print "rd[{'x':'Y'}]", rd[{'x':'Y'}]
-    print 'WTF!?'
-    print 'gd', gd
-    print 'rd', rd
-    print
-
-    gd['bob'] = 'BOB'
-    gd[(1, 2)] = {'a':'A', 'b':[1, 2, '3', '4'], 'c':{'d': 'E', 'f': {'g': 'H'}}}
-    rd['bob'] = 'BOB'
-    rd[(1, 2)] = {'a':'A', 'b':[1, 2, '3', '4'], 'c': {'d': 'E', 'f': {'g': 'H'}}}
-
-    print 'populate'
-    print 'gd', gd
-    print 'gd2', gd2
-    print 'rd', rd
-    print
-
-    print 'iterator checks'
-    print 'list(gd.iterkeys())', list(gd.iterkeys())
-    print 'list(gd.itervalues())', list(gd.itervalues())
-    print 'list(gd.iteritems())', list(gd.iteritems())
-    print
-
-    print 'get(\'bob\')'
-    print 'gd', gd.get('bob')
-    print 'gd2', gd2.get('bob')
-    print 'rd', rd.get('bob')
-    print
-
-    gd.clear()
-    rd.clear()
-    print 'clear()'
-    print 'gd', gd
-    print 'gd2', gd2
-    print 'rd', rd
-    print
-
-    gd['bob'] = 'BOB'
-    gd[(1, 2)] = {'a':'A', 'b':[1, 2, '3', '4']}
-    rd['bob'] = 'BOB'
-    rd[(1, 2)] = {'a':'A', 'b':[1, 2, '3', '4']}
-    print 'populate again'
-    print 'gd', gd
-    print 'gd2', gd2
-    print 'rd', rd
-    print
-
-    print '\'bob\' in gd', 'bob' in gd
-    print '\'bob\' in rd', 'bob' in rd
-    print
-
-    print '\'bob3\' in gd', 'bob3' in gd
-    print '\'bob3\' in rd', 'bob3' in rd
+    RedisDictTests.basic_test()
+    RedisDictTests.check_lock()
+    list_check()
