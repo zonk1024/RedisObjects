@@ -44,18 +44,17 @@ class RedisObject(object):
         self.r.delete(self.name)
 
     def delete_lock(self):
-        while self.r.incr(self.lock_name) != 1:
-            self.r.decr(self.lock_name)
         self.r.delete(self.lock_name)
 
     @contextmanager
     def acquire_lock(self, raise_exception=False):
         while self.r.incr(self.lock_name) != 1:
-            if raise_exception:
-                raise RedisLockInUse()
             self.r.decr(self.lock_name)
+            if raise_exception:
+                raise RedisLockInUse('Cannot acquire lock for {}'.format(self.name))
         yield
-        self.r.decr(self.lock_name)
+        if self.r.exists(self.lock_name):
+            self.r.decr(self.lock_name)
 
     @classmethod
     def cleanup(cls):
@@ -219,6 +218,10 @@ class RedisList(RedisObject):
     def clear(self):
         self.r.delete(self.name)
 
+    def set_to(self, py_list):
+        self.clear()
+        self.r.rpush(self.name, *(self.pickle(value) for value in py_list))
+
     def __add__(self, value):
         if type(value) is list:
             return self.__list__() + value
@@ -253,7 +256,7 @@ class RedisList(RedisObject):
         return not self.__eq__(other)
 
     def __contains__(self, value):
-        index = self.r.index(self.name, self.pickle(value))
+        index = self.r.lindex(self.name, self.pickle(value))
         if index is None:
             return False
         return True
@@ -261,10 +264,8 @@ class RedisList(RedisObject):
     def __iter__(self):
         length = len(self)
         i = 0
-        while i < length - 1:
-            if self.SAFE_ITER and length != len(self):
-                raise RuntimeError("RedisList changed size during iteration")
-            yield self.r.index(self.name, i)
+        while i < length:
+            yield self.unpickle(self.r.lindex(self.name, i))
             i += 1
 
     def __len__(self):

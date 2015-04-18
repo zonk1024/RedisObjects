@@ -4,6 +4,7 @@ from __future__ import print_function
 from RedisObjects import RedisDict, RedisList, RedisLockInUse
 from collections import defaultdict
 from contextlib import contextmanager
+from itertools import izip_longest
 from sets import ImmutableSet
 tests = defaultdict(list)
 
@@ -23,53 +24,51 @@ def populated_dicts():
     }
     redis_dict = RedisDict('redis_dict_test_object')
     redis_dict.clear()
-    redis_dict.delete_lock()
-    with redis_dict.acquire_lock(raise_exception=True):
-        redis_dict.update(py_dict.items())
+    redis_dict.update(py_dict)
     yield (py_dict, redis_dict)
     redis_dict.clear()
     redis_dict.cleanup()
 
-class RedisDictTests:
+class RedisDictTests(object):
+
     @classmethod
     def basic_test(cls):
         with populated_dicts() as (py_dict, redis_dict):
-            print(py_dict)
-            print(redis_dict)
             for key in redis_dict:
                 assert redis_dict[key] == py_dict[key]
+        return True
 
     @classmethod
     def check_lock(cls):
-        with populated_dicts() as (py_dict, redis_dict):
-            with redis_dict.acquire_lock(True):
-                try:
+        try:
+            with populated_dicts() as (py_dict, redis_dict):
+                with redis_dict.acquire_lock(True):
                     with redis_dict.acquire_lock(True):
-                        print('This shouldn\'t happen')
-                except RedisLockInUse as exception:
-                    redis_dict.delete_lock()
-                    redis_dict.clear()
-                    print(exception)
+                        pass
+        except RedisLockInUse as exception:
+            redis_dict.delete_lock()
+        return True
 
+@contextmanager
+def populated_lists():
+    py_list = [1, 2, 3, 4]
+    redis_list = RedisList('redis_list_test_object')
+    redis_list.set_to(py_list)
+    yield (py_list, redis_list)
+    redis_list.clear()
+    redis_list.cleanup()
 
-def list_check():
-    ############
-    # list check
-    l = []
-    rl = RedisList('RedisList_test')
-
-    l.append(5)
-    rl.append(5)
-
-    l.append('bob')
-    with rl.acquire_lock(True):
-        rl.append('bob')
-
-    assert l == rl
-
-    rl.clear()
+class RedisListTests(object):
+    @classmethod
+    def basic_test(cls):
+        with populated_lists() as (py_list, redis_list):
+            assert py_list == redis_list
+            for v1, v2 in izip_longest(py_list, redis_list):
+                assert v1 == v2
+        return True
 
 if __name__ == '__main__':
     RedisDictTests.basic_test()
     RedisDictTests.check_lock()
-    list_check()
+
+    RedisListTests.basic_test()
