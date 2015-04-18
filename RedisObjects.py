@@ -173,7 +173,7 @@ class RedisList(RedisObject):
         self.r.rpush(self.name, self.pickle(value))
 
     def extend(self, values):
-        self.r.rpush(self.name, *[self.pickle(value) for value in values])
+        self.r.rpush(self.name, *(self.pickle(value) for value in values))
 
     def insert(self, index, value):
         self.r.linsert(self.name, index, self.pickle(value))
@@ -213,7 +213,7 @@ class RedisList(RedisObject):
     def reverse(self):
         temp = self.__list__()[::-1]
         self.r.delete(self.name)
-        self.r.rpush(self.name, *[self.pickle(t) for t in temp])
+        self.r.rpush(self.name, *(self.pickle(t) for t in temp))
 
     def clear(self):
         self.r.delete(self.name)
@@ -236,7 +236,7 @@ class RedisList(RedisObject):
         temp = self.__list__()
         del(temp[i:j:n])
         self.r.delete(self.name)
-        self.r.rpush(self.name, *[self.pickle(t) for t in temp])
+        self.r.rpush(self.name, *(self.pickle(t) for t in temp))
 
     def __list__(self):
         return [self.unpickle(value) for value in self.r.lrange(self.name, 0, -1)]
