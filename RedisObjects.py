@@ -82,6 +82,10 @@ class RedisDict(RedisObject):
         self.__delitem__(key)
         return key, value
 
+    def set_to(self, py_dict):
+        self.r.delete(self.name)
+        self.update(py_dict)
+
     def setdefault(self, key, default=None):
         value = self.__getitem__(key)
         if value is not None:

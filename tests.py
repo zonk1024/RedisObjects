@@ -23,8 +23,7 @@ def populated_dicts():
         ImmutableSet((3, )): set((3, )),
     }
     redis_dict = RedisDict('redis_dict_test_object')
-    redis_dict.clear()
-    redis_dict.update(py_dict)
+    redis_dict.set_to(py_dict)
     yield (py_dict, redis_dict)
     redis_dict.clear()
     redis_dict.cleanup()
