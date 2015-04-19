@@ -18,39 +18,31 @@ class UserDoesNotExist(Exception):
     pass
 
 class RedisSession(object):
-    r = redis.Redis()
-
     def __init__(self, session_id):
         self.session_id = session_id
+        self.redis_dict = RedisDict(self.session_key)
 
     @property
     def session_key(self):
         return 'RedisSession_{}'.format(self.session_id)
 
     def __dict__(self):
-        stored = self.r.get(self.session_key)
-        if stored is None:
-            return {}
-        return pickle.loads(stored)
+        return self.redis_dict.__dict__()
 
     def set_dict(self, new_dict):
-        self.r.set(self.session_key, pickle.dumps(new_dict))
+        self.redis_dict.set_to(new_dict)
 
     def get(self, key, default=None):
         return self.__dict__().get(key, default)
 
     def __getitem__(self, key):
-        return self.__dict__().get(key)
+        self.redis_dict[key]
 
     def __setitem__(self, key, value):
-        current = self.__dict__()
-        current[key] = value
-        self.r.set(self.session_key, pickle.dumps(current))
+        self.redis_dict[key] = value
 
     def __delitem__(self, key):
-        current = self.__dict__()
-        del(current[key])
-        self.r.set(self.session_key, pickle.dumps(current))
+        del(self.redis_dict[key])
 
 class User(object):
     userlist = RedisList('{}_userlist'.format(NAME))
@@ -80,7 +72,7 @@ class User(object):
     def get_user(cls, username):
         try:
             return cls(username)
-        except UserDoesNotExist as exception:
+        except UserDoesNotExist:
             return None
 
     @classmethod

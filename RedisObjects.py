@@ -96,7 +96,9 @@ class RedisDict(RedisObject):
     def get(self, key, default=None):
         pickled_value = self.r.hget(self.name, self.pickle(key))
         if pickled_value is None:
-            return default
+            if default is not None:
+                return default
+            raise KeyError('Key "{}" is not valid'.format(key))
         return self.unpickle(pickled_value)
 
     def update(self, obj, **kwargs):
