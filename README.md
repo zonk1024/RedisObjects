@@ -3,9 +3,9 @@ RedisObjects
 
 Simple to use:
 
-rd = RedisDict()
+rd = RedisDict('myredisdict')
 
-rd['key'] = value
+rd['key'] = 'value'
 
 rd.items()
 
@@ -17,14 +17,9 @@ Need to clear the values?
 rd.clear()
 
 
-Different host?
+Different host and port?
 
-rd = RedisDict(host='notlocalhost')
-
-
-Different namespace?
-
-rd = RedisDict('different-namespace')
+rd = RedisDict('myredisdict', host='notlocalhost', port=6380)
 
 
 THANKS!
