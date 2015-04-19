@@ -35,7 +35,6 @@ class RedisDictTests(object):
         with populated_dicts() as (py_dict, redis_dict):
             for key in redis_dict:
                 assert redis_dict[key] == py_dict[key]
-        return True
 
     @staticmethod
     def lock_test():
@@ -46,7 +45,6 @@ class RedisDictTests(object):
                         pass
         except RedisLockInUse as exception:
             redis_dict.delete_lock()
-        return True
 
     @staticmethod
     def contains_test():
@@ -71,7 +69,6 @@ class RedisListTests(object):
             assert len(py_list) == len(redis_list)
             for v1, v2 in izip(py_list, redis_list):
                 assert v1 == v2
-        return True
 
     @staticmethod
     def slice_test():
@@ -147,6 +144,15 @@ class RedisListTests(object):
             del(redis_list[-1])
             assert py_list != redis_list
 
+    @staticmethod
+    def remove_test():
+        with populated_lists() as (py_list, redis_list):
+            value = py_list[0]
+            py_list.remove(value)
+            redis_list.remove(value)
+            assert py_list == redis_list
+            assert value not in py_list
+            assert value not in redis_list
 
 
 if __name__ == '__main__':
@@ -160,3 +166,4 @@ if __name__ == '__main__':
     RedisListTests.iter_test()
     RedisListTests.contains_test()
     RedisListTests.equal_length_test()
+    RedisListTests.remove_test()

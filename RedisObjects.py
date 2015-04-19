@@ -191,7 +191,7 @@ class RedisList(RedisObject):
         self.r.linsert(self.name, index, self.pickle(value))
 
     def remove(self, value):
-        self.r.lrem(self.name, value)
+        self.r.lrem(self.name, self.pickle(value))
 
     def pop(self, index=-1):
         length = len(self)
@@ -219,7 +219,7 @@ class RedisList(RedisObject):
     def sort(self, *args, **kwargs):
         temp = sorted(self.__list__(), *args, **kwargs)
         self.r.delete(self.name)
-        self.r.rpush(self.name, *temp)
+        self.r.rpush(self.name, *(self.pickle(value) for value in temp))
         return temp
 
     def reverse(self):
@@ -230,9 +230,9 @@ class RedisList(RedisObject):
     def clear(self):
         self.r.delete(self.name)
 
-    def set_to(self, py_list):
+    def set_to(self, new_list):
         self.clear()
-        self.r.rpush(self.name, *(self.pickle(value) for value in py_list))
+        self.r.rpush(self.name, *(self.pickle(value) for value in new_list))
 
     def __add__(self, value):
         if type(value) is list:
