@@ -60,6 +60,7 @@ class RedisObject(object):
     def cleanup(cls):
         for instance in cls.instances:
             instance.delete_lock()
+            instance.clear()
 
     def pickle(self, value):
         return pickle.dumps(value)
@@ -137,7 +138,7 @@ class RedisDict(RedisObject):
         self.r.hdel(self.name, self.pickle(key))
 
     def __contains__(self, key):
-        return self.hexists(self.name, self.pickle(key))
+        return self.r.hexists(self.name, self.pickle(key))
 
     def __iter__(self):
         return (self.unpickle(key) for key in self.r.hkeys(self.name))
@@ -217,7 +218,7 @@ class RedisList(RedisObject):
     def reverse(self):
         temp = self.__list__()[::-1]
         self.r.delete(self.name)
-        self.r.rpush(self.name, *(self.pickle(t) for t in temp))
+        self.r.rpush(self.name, *(self.pickle(value) for value in temp))
 
     def clear(self):
         self.r.delete(self.name)
@@ -234,13 +235,18 @@ class RedisList(RedisObject):
         raise TypeError('can only concatenate list or RedisList (not "{}") to RedisList'.format(type(value)))
 
     def __delitem__(self, index):
-        self.pop(index)
+        temp = self.__list__()
+        del(temp[index])
+        self.r.delete(self.name)
+        self.r.rpush(self.name, *(self.pickle(value) for value in temp))
 
-    def __delslice__(self, i, j, n=1):
+    def __delslice__(self, *coords):
+        i, j = coords
+        n = 1 if len(coords) != 3 else coords[2]
         temp = self.__list__()
         del(temp[i:j:n])
         self.r.delete(self.name)
-        self.r.rpush(self.name, *(self.pickle(t) for t in temp))
+        self.r.rpush(self.name, *(self.pickle(value) for value in temp))
 
     def __list__(self):
         return [self.unpickle(value) for value in self.r.lrange(self.name, 0, -1)]
@@ -260,13 +266,20 @@ class RedisList(RedisObject):
         return not self.__eq__(other)
 
     def __contains__(self, value):
-        return False if self.r.lindex(self.name, self.pickle(value)) is None else True
+        return any(self_value == value for self_value in self.__iter__())
 
     def __iter__(self):
         return (self.unpickle(self.r.lindex(self.name, i)) for i in xrange(self.__len__()))
 
     def __len__(self):
         return self.r.llen(self.name)
+
+    def __getitem__(self, coords):
+        if type(coords) is slice:
+            return [self.unpickle(value) for value in self.r.lrange(self.name, 0, -1)[coords]]
+        if type(coords) is int:
+            return self.unpickle(self.r.lindex(self.name, coords))
+
 
 class RedisSet(RedisObject):
     pass
