@@ -60,7 +60,6 @@ class RedisObject(object):
     def cleanup(cls):
         for instance in cls.instances:
             instance.delete_lock()
-            instance.clear()
 
     def pickle(self, value):
         return pickle.dumps(value)
@@ -95,7 +94,10 @@ class RedisDict(RedisObject):
         return default
 
     def get(self, key, default=None):
-        return self.__getitem__(key) or default
+        pickled_value = self.r.hget(self.name, self.pickle(key))
+        if pickled_value is None:
+            return default
+        return self.unpickle(pickled_value)
 
     def update(self, obj, **kwargs):
         for key, value in kwargs.iteritems():
@@ -129,7 +131,10 @@ class RedisDict(RedisObject):
         return list(self.iteritems())
 
     def __getitem__(self, key):
-        return self.unpickle(self.r.hget(self.name, self.pickle(key)))
+        pickled_value = self.r.hget(self.name, self.pickle(key))
+        if pickled_value is None:
+            raise KeyError('Key "{}" is not valid'.format(key))
+        return self.unpickle(pickled_value)
 
     def __setitem__(self, key, value):
         self.r.hset(self.name, self.pickle(key), self.pickle(value))
@@ -281,7 +286,6 @@ class RedisList(RedisObject):
             return [self.unpickle(value) for value in self.r.lrange(self.name, 0, -1)[coords]]
         if type(coords) is int:
             return self.unpickle(self.r.lindex(self.name, coords))
-
 
 class RedisSet(RedisObject):
     pass
