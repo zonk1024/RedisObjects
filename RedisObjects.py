@@ -259,6 +259,8 @@ class RedisList(RedisObject):
 
     def __eq__(self, other):
         if type(other) in (list, RedisList):
+            if len(self) != len(other):
+                return False
             return all(a == b for a, b in izip(self.__list__(), other))
         return False
 

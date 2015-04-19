@@ -139,6 +139,14 @@ class RedisListTests(object):
             for value in py_list:
                 assert value in redis_list
 
+    @classmethod
+    def equal_length_test(cls):
+        with populated_lists() as (py_list, redis_list):
+            del(redis_list[-1])
+            assert py_list != redis_list
+
+
+
 if __name__ == '__main__':
     RedisDictTests.basic_test()
     RedisDictTests.lock_test()
@@ -149,3 +157,4 @@ if __name__ == '__main__':
     RedisListTests.del_slice_test()
     RedisListTests.iter_test()
     RedisListTests.contains_test()
+    RedisListTests.equal_length_test()
