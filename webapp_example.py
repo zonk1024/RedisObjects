@@ -63,9 +63,7 @@ class User(object):
     @classmethod
     def login(cls, username, password):
         redis_dict = RedisDict(cls.redis_dict_name(username))
-        hasher = sha512()
-        hasher.update(password)
-        if redis_dict.get('password', None) == hasher.hexdigest():
+        if redis_dict.get('password', '') == cls.hash_password(password):
             return User(username)
 
     @classmethod
@@ -76,18 +74,30 @@ class User(object):
             return None
 
     @classmethod
-    def create_user(cls, username, password='dontdothis'):
+    def create_user(cls, username, password):
         redis_dict = RedisDict(cls.redis_dict_name(username))
-        hasher = sha512()
-        hasher.update(password)
-        redis_dict['password'] = hasher.hexdigest()
+        redis_dict['password'] = cls.hash_password(password)
         if username not in cls.userlist:
             cls.userlist.append(username)
         return cls(username)
 
     @property
+    def password(self):
+        return self.redis_dict['password']
+
+    @password.setter
+    def password(self, value):
+        self.redis_dict['password'] = self.hash_password(value)
+
+    @staticmethod
+    def hash_password(password):
+        hasher = sha512()
+        hasher.update(password)
+        return hasher.hexdigest()
+
+    @property
     def email(self):
-        return self.redis_dict['email']
+        return self.redis_dict.get('email', '')
 
     @email.setter
     def email(self, value):
@@ -111,12 +121,31 @@ def index():
         del(session['username'])
         return flask.redirect('/login')
     userlist = '<br />'.join(list(User.userlist))
-    return '<html><body>Hello, {}!<br /><a href="/logout">Logout</a><br /><br />Users (<a href="/create-user">create</a>):<br />{}</body></html>'.format(user.username, userlist)
+    return '''<html>
+            <body>
+                Hello, {}!
+                <br />
+                <a href="/logout">Logout</a>
+                <br />
+                <br />
+                Users (<a href="/create-user">create</a>):
+                <br />
+                {}
+            </body>
+        </html>'''.format(user.username, userlist)
 
 # Login / Logout
 @app.route('/login')
 def login_get():
-    return '<html><body><form method="POST"><input name="username" value="guest" /><input type="password" name="password" value="guest" /><input type="submit" value="login" /></form></body></html>'
+    return '''<html>
+            <body>
+                <form method="POST">
+                    <input name="username" value="guest" />
+                    <input type="password" name="password" value="guest" />
+                    <input type="submit" value="login" />
+                </form>
+            </body>
+        </html>'''
 
 @app.route('/login', methods=['POST'])
 def login_post():
@@ -136,7 +165,15 @@ def logout():
 # User creation
 @app.route('/create-user')
 def create_user_get():
-    return '<html><body><form method="POST"><input name="username" /><input type="password" name="password" /><input type="submit" value="Create User" /></form></body></html>'
+    return '''<html>
+            <body>
+                <form method="POST">
+                    <input name="username" />
+                    <input type="password" name="password" />
+                    <input type="submit" value="Create User" />
+                </form>
+            </body>
+        </html>'''
 
 @app.route('/create-user', methods=['POST'])
 def create_user_post():
