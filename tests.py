@@ -30,15 +30,15 @@ def populated_dicts():
 
 class RedisDictTests(object):
 
-    @classmethod
-    def basic_test(cls):
+    @staticmethod
+    def basic_test():
         with populated_dicts() as (py_dict, redis_dict):
             for key in redis_dict:
                 assert redis_dict[key] == py_dict[key]
         return True
 
-    @classmethod
-    def lock_test(cls):
+    @staticmethod
+    def lock_test():
         try:
             with populated_dicts() as (py_dict, redis_dict):
                 with redis_dict.acquire_lock(True):
@@ -48,8 +48,8 @@ class RedisDictTests(object):
             redis_dict.delete_lock()
         return True
 
-    @classmethod
-    def contains_test(cls):
+    @staticmethod
+    def contains_test():
         with populated_dicts() as (py_dict, redis_dict):
             for key in py_dict:
                 assert key in redis_dict
@@ -64,8 +64,8 @@ def populated_lists():
     redis_list.cleanup()
 
 class RedisListTests(object):
-    @classmethod
-    def basic_test(cls):
+    @staticmethod
+    def basic_test():
         with populated_lists() as (py_list, redis_list):
             assert py_list == redis_list
             assert len(py_list) == len(redis_list)
@@ -73,8 +73,8 @@ class RedisListTests(object):
                 assert v1 == v2
         return True
 
-    @classmethod
-    def slice_test(cls):
+    @staticmethod
+    def slice_test():
         with populated_lists() as (py_list, redis_list):
             assert py_list[1] == redis_list[1]
             assert py_list[-1] == redis_list[-1]
@@ -86,8 +86,8 @@ class RedisListTests(object):
             assert py_list[-30:30:7] == redis_list[-30:30:7]
             assert py_list[::] == redis_list[::]
 
-    @classmethod
-    def del_slice_test(cls):
+    @staticmethod
+    def del_slice_test():
         with populated_lists() as (py_list, redis_list):
             del(py_list[1])
             del(redis_list[1])
@@ -128,21 +128,21 @@ class RedisListTests(object):
         #    print(redis_list)
         #    assert py_list == redis_list
 
-    @classmethod
-    def iter_test(cls):
+    @staticmethod
+    def iter_test():
         with populated_lists() as (py_list, redis_list):
             assert len(py_list) == len(redis_list)
             for v1, v2 in izip(py_list, redis_list):
                 assert v1 == v2
 
-    @classmethod
-    def contains_test(cls):
+    @staticmethod
+    def contains_test():
         with populated_lists() as (py_list, redis_list):
             for value in py_list:
                 assert value in redis_list
 
-    @classmethod
-    def equal_length_test(cls):
+    @staticmethod
+    def equal_length_test():
         with populated_lists() as (py_list, redis_list):
             del(redis_list[-1])
             assert py_list != redis_list
