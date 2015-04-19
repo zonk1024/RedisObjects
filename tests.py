@@ -4,7 +4,7 @@ from __future__ import print_function
 from RedisObjects import RedisDict, RedisList, RedisLockInUse
 from collections import defaultdict
 from contextlib import contextmanager
-from itertools import izip_longest
+from itertools import izip
 from sets import ImmutableSet
 tests = defaultdict(list)
 
@@ -68,7 +68,8 @@ class RedisListTests(object):
     def basic_test(cls):
         with populated_lists() as (py_list, redis_list):
             assert py_list == redis_list
-            for v1, v2 in izip_longest(py_list, redis_list):
+            assert len(py_list) == len(redis_list)
+            for v1, v2 in izip(py_list, redis_list):
                 assert v1 == v2
         return True
 
@@ -130,7 +131,8 @@ class RedisListTests(object):
     @classmethod
     def iter_test(cls):
         with populated_lists() as (py_list, redis_list):
-            for v1, v2 in izip_longest(py_list, redis_list):
+            assert len(py_list) == len(redis_list)
+            for v1, v2 in izip(py_list, redis_list):
                 assert v1 == v2
 
     @classmethod
