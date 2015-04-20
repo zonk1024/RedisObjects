@@ -76,7 +76,6 @@ class RedisSession(object):
             return
         session['username'] = user.username
 
-
 class User(object):
     userlist = RedisList('{}_userlist'.format(NAME))
 
